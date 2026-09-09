@@ -10,10 +10,22 @@ Personal Claude Code skills.
 
 ## Using them
 
-Skills are picked up from `~/.claude/skills/`. Symlink instead of copying, so edits here are live:
+Two config dirs are in play — the shell aliases pick which one Claude reads:
+
+| alias | `CLAUDE_CONFIG_DIR` |
+| --- | --- |
+| `clauder` | `~/.claude` |
+| `claudepr` | `~/.claude-personal` |
+
+A skill only exists for the alias whose `skills/` directory contains it, so install into **both**.
+Symlink instead of copying, so edits here are live:
 
 ```bash
-ln -s ~/projects/skills/easy-approve ~/.claude/skills/easy-approve
-ln -s ~/projects/skills/clean-worktrees ~/.claude/skills/clean-worktrees
-ln -s ~/projects/skills/parallel ~/.claude/skills/parallel
+for cfg in ~/.claude ~/.claude-personal; do
+  for skill in easy-approve clean-worktrees parallel; do
+    ln -sfn ~/projects/skills/"$skill" "$cfg"/skills/"$skill"
+  done
+done
 ```
+
+Skills are read at startup — a new symlink shows up in the next session, not the running one.
