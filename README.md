@@ -6,7 +6,7 @@ Personal Claude Code skills.
 | --- | --- |
 | [`easy-approve`](easy-approve/) | Triages a repo's open PRs into *easy approve* / *approve with a note* / *needs a real review*, reproducing each candidate's bug and fix — unit tests when the PR ships them, iOS simulator when the change is visible. Reports only; never approves. |
 | [`clean-worktrees`](clean-worktrees/) | Finds every git worktree in every repo under `~/projects`, classifies each as clean / unpushed / dirty / locked / gone, and removes only the ones whose contents exist somewhere else — after confirmation. Never force-removes, never deletes unmerged branches. |
-| [`parallel`](parallel/) | Max mode. Decomposes a task into sub-plans that provably cannot collide, then runs them concurrently through the `Workflow` tool — one agent implementing each, an independent agent trying to prove it wrong, one repair attempt — and converges with the full suite over the integrated tree. Never commits or pushes. |
+| [`parallel`](parallel/) | Max mode, two flavours. **build**: decomposes a task into sub-plans that provably cannot collide, implements each in its own agent, and has a *different* agent re-run the acceptance criteria. **research**: sweeps a question from independent angles, then makes 2 agents per finding try to refute it — unanimous survival or it is cut — and a critic name what the sweep missed. Prints the projected agent count before launching. Never commits; research never writes at all. |
 
 ## Using them
 

@@ -1,72 +1,80 @@
 ---
 name: parallel
 description: >
-  Max mode: decompose a task into independent sub-plans and actually execute them in parallel with a
-  fan-out of subagents, verifying each one adversarially before calling it done. Plans, runs, verifies
-  and converges — it does not just plan. Use when the user says things like "/parallel", "max mode",
+  Max mode: fan out a task across subagents and verify every result adversarially before believing it.
+  Two modes — build (decompose into non-colliding sub-plans, implement each, re-run its acceptance
+  criteria in a separate agent) and research (sweep a question from independent angles, try to refute
+  every finding, ask what was missed). Use when the user says things like "/parallel", "max mode",
   "modo max", "en paralelo", "paralelizá esto", "fan out", "ultracode local", "dale con varios agentes",
-  or hands over a task big enough that one sequential pass would take too long.
-argument-hint: '[task] [--agents N] [--isolated] [--plan-only] [--yes]'
+  "investigá a fondo", "exploratorio", "research", or hands over a task or question too big for one
+  sequential pass.
+argument-hint: '[task or question] [--research] [--build] [--agents N] [--verify N] [--isolated] [--plan-only] [--yes]'
 ---
 
 ## What this does
 
-Takes one task, splits it into sub-plans that cannot collide, and runs them **concurrently through the
-`Workflow` tool** — one agent implementing each sub-plan, a second agent trying to prove that agent
-wrong, and one repair attempt when it does. Then it converges: full test suite, typecheck, lint over
-the integrated tree, and a report.
+Runs one task across a fleet of subagents and then tries to prove the fleet wrong. Invoking this skill
+**is** the opt-in for the `Workflow` tool — the user does not need to type "ultracode".
 
-Invoking this skill **is** the opt-in for `Workflow`. The user does not need to type "ultracode".
+The value is never "more agents". It is that nothing enters the final report on an agent's say-so.
+An agent that fabricates a passing test and an agent that fabricates a `file:line` citation fail the
+same way: the output reads exactly like the truth. Every phase below exists to make that expensive.
 
-The value is not "more agents". It is the two invariants below. An agent fleet with a bad
-decomposition is slower than one sequential agent, because you pay for the work twice: once to write
-the conflicts and once to untangle them.
+## Two modes
 
-## Hard rules
+| | `build` | `research` |
+| --- | --- | --- |
+| input | a task with a deliverable | a question |
+| split by | files (no two agents write the same one) | angles (subsystem, symptom, entity, git history, external docs) |
+| hard invariant | **no file collisions** | **coverage** — no gap; overlap is fine, reading collides with nothing |
+| verification | a second agent re-runs the acceptance criteria | 2 agents per finding try to **refute** it, each through a different lens |
+| deliverable | a diff in the working tree | `.claude/research/<ts>-<slug>/report.md` |
+| extra hard rule | never commits, pushes, merges or opens PRs | **read-only** — no agent edits anything |
 
-- **Never commits, pushes, merges to a shared branch, or opens PRs.** Changes are left in the working
-  tree with a report. "Max" is about agents, not about permissions.
-- **No file is touched by two sub-plans.** Verified with a table before a single agent is launched
-  (Phase 2). If the table has a collision that cannot be factored out, the work is not parallelizable
-  — say so and stop.
-- **Every sub-plan is self-contained on disk.** Subagents get a prompt and nothing else — no memory of
-  this conversation. They are handed a file path, so the file must carry the why, the scope, the
-  constraints and the acceptance criteria.
-- **Verification is adversarial and independent.** The agent that verifies a sub-plan is never the
-  agent that implemented it, and it re-runs the acceptance criteria itself rather than believing the
-  implementer's summary.
+Pick by the shape of the ask: a question ("why is X slow", "how does Y work", "what would break if Z")
+is `research`; anything with a deliverable diff is `build`. `--research` / `--build` force it. If the
+task is genuinely both ("find out why it's slow **and** fix it"), run `research` first, show the
+report, and let the user decide what to build — do not chain them silently.
+
+## Sizing
+
+Default **5 agents wide** (`--agents N`), which is the concurrency cap either way. Width is not total:
+`build` costs roughly `sub-plans × 2` agents plus repairs; `research` costs `angles + findings ×
+refuters + 1 critic` per round. Refuters default to 2 (`--verify N`; `--verify 0` disables
+verification and must be reported in the output as unverified).
+
+Phase 3 shows the projected total before anything launches. Never launch a fleet whose size the user
+has not seen.
 
 ## Phase 0 — Preconditions
 
-1. `git status --short` — a dirty tree makes it impossible to tell agent output from pre-existing
-   work at convergence. If dirty: list what is dirty and ask whether to proceed anyway or stash.
-2. Record the starting branch and `git rev-parse HEAD`. That SHA is the baseline every diff in the
-   report is taken against.
-3. If not in a git repo, `--isolated` is unavailable and convergence has no diff to show. Say so.
+- `build`: `git status --short` must be clean, or list what is dirty and ask. Record the baseline SHA
+  (`git rev-parse HEAD`) — every diff in the report is taken against it.
+- `research`: nothing to check. Read-only work does not care about the tree state.
 
-## Phase 1 — Recon (sequential, cheap)
+## Phase 1 — Recon (sequential, cheap, both modes)
 
-Understand the task and map the surface before splitting it. `$ARGUMENTS` is the task if given,
-otherwise infer it from the conversation; if the scope is genuinely ambiguous, ask **one** question.
+`$ARGUMENTS` is the task if given, otherwise infer from the conversation. If the scope is genuinely
+ambiguous, ask **one** question.
 
-Use `Explore` or `grep`/`find` to answer: which files, modules and layers are in play, what the
-natural seams are (per-module, per-screen, per-endpoint, per-test-suite, frontend vs backend), and
-whether anything cross-cutting (shared types, barrel exports, a migration, a config key) must happen
-before or after the fan-out.
+Then map the ground yourself before splitting it — `Explore`, `grep`, `find`, `git log`. For `build`,
+which files and layers are in play and where the seams are. For `research`, what the subsystems are
+and which angles are even available, so the split is not five agents grepping the same directory.
 
-Do not skip this. A decomposition written without reading the layout is a guess, and Phase 2's table
-will be a fiction built on it.
+Do not skip this. A decomposition written without reading the layout is a guess, and Phase 2's
+verification table will be a fiction built on it.
 
 ## Phase 2 — Decomposition
 
-Split into **N sub-plans, default 3–5** (`--agents N` overrides). Fewer, bigger sub-plans beat many
-tiny ones: agent startup, context re-derivation and merge cost dominate below ~15 minutes of work.
+Write to disk before showing anything in chat — agents read files, not conversations. `build` writes
+`<repo>/.claude/plans/<YYYYMMDD-HHMM>-<slug>/`, `research` writes `<repo>/.claude/research/<same>/`.
+The first time either directory is created, suggest adding it to `.gitignore` (do not edit it
+yourself). `--plan-only` stops at the end of this phase.
 
-Write them to `<repo>/.claude/plans/<YYYYMMDD-HHMM>-<slug>/` before showing anything in chat — agents
-read files, not chat. Create the directory if needed, and the first time, suggest adding
-`.claude/plans/` to `.gitignore` (do not edit it yourself).
+### `build`: sub-plans
 
-Each `sub-plan-N.md`:
+3–5 sub-plans. Fewer and bigger beats many and tiny — agent startup, context re-derivation and merge
+cost dominate below ~15 minutes of work. Each `sub-plan-N.md`:
 
 ```markdown
 ### Sub-plan N: <title>
@@ -91,51 +99,90 @@ Each `sub-plan-N.md`:
 Acceptance criteria with no runnable command are not acceptance criteria — the verifier has nothing
 to run and will rubber-stamp. If a sub-plan genuinely has no automated check, say which one and why.
 
-`meta.md` carries the overview, prerequisites, the sub-plan list, the convergence steps, and:
+`meta.md` carries the overview, prerequisites, the sub-plan list, convergence steps, and **the
+independence table**: one row per file path mentioned anywhere, one column of sub-plans touching it.
+Any row with two sub-plans means the decomposition is broken — merge those sub-plans, extract the
+shared piece into a sequential prerequisite, or fall back to `--isolated`. Reading the same file from
+two sub-plans is fine; writing it is not.
 
-**The independence table** — one row per file path mentioned anywhere, one column of sub-plans
-touching it. Any row with two sub-plans means the decomposition is broken. Fix it by merging those
-sub-plans, extracting the shared piece into a sequential prerequisite, or falling back to `--isolated`.
-Reading the same file from two sub-plans is fine; writing it is not.
+### `research`: angles
 
-`--plan-only` stops here.
+3–5 angles, each a genuinely different **way of looking**, not a different folder. The point is that
+each agent is blind to what the others will surface:
+
+| angle | asks |
+| --- | --- |
+| by subsystem | what does this layer do about the question |
+| by symptom | reproduce or measure the thing being asked about |
+| by entity | follow one type / table / endpoint / user action end to end |
+| by history | `git log -S`, blame, PRs — when did this change and why |
+| by outside | docs, changelogs, issue trackers, the library's own source |
+
+Five agents each grepping the same directory with different words is one angle, not five.
+
+`meta.md` carries the question stated precisely, the angles, what is explicitly **out** of scope, and
+**the coverage table**: one row per subsystem or source that could hold an answer, one column of
+angles that will look at it. A row nobody covers is a gap — either add an angle or record it in the
+report as deliberately not looked at. Unlike `build`, two angles in one row is fine and often good.
+
+Sub-plan files here are `angle-N.md`, each self-contained: the question, this angle's lens, where to
+start, what counts as evidence, and the rule that every finding must cite something a stranger can
+re-open — `file:line`, a command with its output, a commit SHA, a URL. **"It seems like" is not a
+finding.**
 
 ## Phase 3 — Gate
 
-Show, in chat: the one-paragraph overview, the sub-plan list with file paths, **the independence
-table**, prerequisites, and the agent count. Never paste full sub-plan bodies — they are on disk.
+Show in chat: the question or task in one paragraph, the sub-plan/angle list, **the verification
+table** (independence or coverage), prerequisites, and the projected agent total with its arithmetic
+(`5 angles + ~8 findings × 2 refuters + 1 critic ≈ 22`). Never paste full sub-plan bodies — they are
+on disk.
 
 Then ask for confirmation. `--yes` skips the ask. Run any sequential prerequisites yourself, in the
 main session, before launching.
 
 ## Phase 4 — Execution (the `Workflow` call)
 
-Call the `Workflow` tool with an inline `script` built from
-[`references/workflow-template.md`](references/workflow-template.md), passing the absolute sub-plan
-paths through `args`. Read that file before writing the script — it carries the pipeline shape, the
-schemas, and the constraints of the scripting environment.
+Call the `Workflow` tool with an inline `script` adapted from the matching template — read it before
+writing the script, it carries the schemas and the constraints of the scripting environment:
 
-The shape is `pipeline(subplans, implement, verifyThenRepair)`: each sub-plan is verified the moment
-its implementation lands, without waiting for the other implementers. Not `parallel()` — there is no
-cross-sub-plan dependency, so a barrier here would just idle the fast agents.
+- `build` → [`references/workflow-template.md`](references/workflow-template.md)
+- `research` → [`references/research-template.md`](references/research-template.md)
 
-Concurrency is capped around 10 agents at a time regardless of how many items you pass; the workflow
-runs in the background and notifies on completion. If the script needs a fix mid-run, edit the
-persisted script file the tool result points at and relaunch with `{scriptPath, resumeFromRunId}` —
-the unchanged prefix of agents returns from cache instead of re-running.
+Both use `pipeline`, not `parallel`: an item moves to verification the moment it lands, without
+waiting for its slowest sibling. A barrier is only correct when a stage needs every prior result at
+once — neither template does, except the research critic, which by definition does.
 
-## Phase 5 — Convergence (sequential, main session)
+The workflow runs in the background and notifies on completion. If the script needs a fix mid-run,
+edit the persisted script file the tool result points at and relaunch with `{scriptPath,
+resumeFromRunId}` — the unchanged prefix of agents returns from cache instead of re-running.
+
+## Phase 5 — Convergence
+
+### `build`
 
 1. `git status --short` and `git diff --stat <baseline-sha>` — what actually changed.
 2. **Check the invariant held:** every changed file must appear in exactly one sub-plan's scope. A
-   file changed by an agent that did not own it is the failure mode this whole skill exists to
-   prevent — report it loudly, it is not a footnote.
+   file changed by an agent that did not own it is the failure mode this skill exists to prevent —
+   report it loudly, it is not a footnote.
 3. Run the full suite, typecheck and lint over the integrated tree. Per-sub-plan green does not imply
    green together; that is the entire point of this phase.
-4. Report per sub-plan: ok / repaired / failed / blocked, with the verifier's evidence. Say plainly
-   what is not done. A failed sub-plan is a result, not something to quietly retry forever.
+4. Report per sub-plan: ok / repaired / failed / blocked, with the verifier's evidence.
 
-## `--isolated`
+### `research`
+
+1. Write `report.md`: the answer first, then the findings that support it, each with its citation and
+   how many refuters it survived. Then **what was not looked at** — uncovered rows from the coverage
+   table, angles that returned nothing, findings killed in verification and why. A research report
+   without its own negative space is a sales pitch.
+2. **Spot-check two surviving findings yourself**, in the main session, by opening the citation. The
+   verifiers are agents too. If a citation does not say what the finding claims, that is not one bad
+   finding — treat the whole run as suspect and say so.
+3. Summarize in chat: the answer, the confidence, the gaps. Link the report; do not paste it whole.
+
+Answer the question that was asked. Fifteen verified findings that never resolve the question are a
+failed run, not a thorough one.
+
+## `--isolated` (`build` only)
 
 For when the decomposition cannot avoid overlap and the user accepts merge cost.
 
@@ -157,24 +204,30 @@ time, stopping at the first conflict and handing it to the user. Leave the workt
 
 ## When NOT to use this
 
-Say so and do the work sequentially instead:
+Say so and work sequentially instead:
 
-- The task fits in one agent's context and one pass. Orchestration overhead is real.
-- Every change lands in the same file, or in a shared type/barrel/migration.
-- The work is exploratory ("figure out why X is slow") — you cannot write acceptance criteria for a
-  question, and sub-plans without acceptance criteria are unverifiable.
-- Ordering is the whole task (a migration whose steps must run in sequence).
+- One agent can hold the whole thing in context and finish in one pass. Orchestration overhead is real.
+- (`build`) Every change lands in the same file, or in a shared type / barrel / migration.
+- (`build`) Ordering is the whole task — a migration whose steps must run in sequence.
+- (`research`) The question has one obvious place to look. Five angles onto a two-file answer is
+  theatre, and the synthesis step will invent structure to justify itself.
+- The user asked a question you can answer from what is already in context.
 
 ## Anti-patterns
 
 - **Fake parallelism.** Declaring sub-plans independent when they are not, because the user asked for
   parallel. The conflicts arrive later and cost more.
+- **Fake angles.** Five agents running the same search with different words, then a synthesis that
+  presents the same finding five times as convergent evidence.
 - **Splitting too fine.** Eight 5-minute sub-plans lose to three 20-minute ones.
 - **Hidden context.** Sub-plans that say "as discussed above". Fresh agents have no above.
-- **Trusting the implementer's report.** `files_changed` is a claim; `git diff` is evidence.
-- **Silent truncation.** If you cap the fan-out or drop a sub-plan, `log()` it. A report that omits
-  what was skipped reads as full coverage.
+- **Trusting the agent's report.** `files_changed` is a claim, `git diff` is evidence. A citation is a
+  claim, the line at that citation is evidence.
+- **Consensus as truth.** Agents sharing a codebase and a prompt share a bias; three agreeing is not
+  three confirmations. Refutation is the check, not a vote.
+- **Silent truncation.** If you cap the fan-out, drop an angle, or skip verification with
+  `--verify 0`, `log()` it and put it in the report. Omission reads as full coverage.
 
 ## Output language
 
-Match the user's language — plans, report and questions. Spanish in, Spanish out.
+Match the user's language — plans, report, and questions. Spanish in, Spanish out.
