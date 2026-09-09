@@ -8,13 +8,18 @@ description: >
   "modo max", "en paralelo", "paralelizá esto", "fan out", "ultracode local", "dale con varios agentes",
   "investigá a fondo", "exploratorio", "research", or hands over a task or question too big for one
   sequential pass.
-argument-hint: '[task or question] [--research] [--build] [--agents N] [--verify N] [--isolated] [--plan-only] [--yes]'
+argument-hint: '[task or question] [--research] [--build] [--agents N] [--verify N] [--isolated] [--plan-only] [--ask]'
 ---
 
 ## What this does
 
 Runs one task across a fleet of subagents and then tries to prove the fleet wrong. Invoking this skill
 **is** the opt-in for the `Workflow` tool — the user does not need to type "ultracode".
+
+Invoking it is also the **go-ahead to launch**. The user already chose the expensive path by typing
+`/parallel`; asking "¿arranco?" after they asked is a second toll booth on a decision they made.
+Show the plan and launch in the same turn. `--plan-only` is how someone asks for the plan alone,
+`--ask` is how they ask to be prompted; neither is the default.
 
 The value is never "more agents". It is that nothing enters the final report on an agent's say-so.
 An agent that fabricates a passing test and an agent that fabricates a `file:line` citation fail the
@@ -43,19 +48,23 @@ Default **5 agents wide** (`--agents N`), which is the concurrency cap either wa
 refuters + 1 critic` per round. Refuters default to 2 (`--verify N`; `--verify 0` disables
 verification and must be reported in the output as unverified).
 
-Phase 3 shows the projected total before anything launches. Never launch a fleet whose size the user
-has not seen.
+Phase 3 prints the projected total in the same turn it launches, so the size is on screen before
+the first agent reports. Printing it is the requirement — waiting for an answer is not.
 
 ## Phase 0 — Preconditions
 
-- `build`: `git status --short` must be clean, or list what is dirty and ask. Record the baseline SHA
-  (`git rev-parse HEAD`) — every diff in the report is taken against it.
+- `build`: run `git status --short`. If dirty, check the dirty paths against the sub-plan scopes.
+  No overlap → say what is dirty and launch anyway. Overlap → that is a real collision, so stop and
+  ask; agents would clobber uncommitted work. Record the baseline SHA (`git rev-parse HEAD`) — every
+  diff in the report is taken against it.
 - `research`: nothing to check. Read-only work does not care about the tree state.
 
 ## Phase 1 — Recon (sequential, cheap, both modes)
 
 `$ARGUMENTS` is the task if given, otherwise infer from the conversation. If the scope is genuinely
-ambiguous, ask **one** question.
+ambiguous, prefer stating the assumption in Phase 3 and launching over stopping to ask. Ask **one**
+question only when the two readings would send the whole fleet at different targets — that is, when
+being wrong wastes every agent, not just one.
 
 Then map the ground yourself before splitting it — `Explore`, `grep`, `find`, `git log`. For `build`,
 which files and layers are in play and where the seams are. For `research`, what the subsystems are
@@ -130,15 +139,24 @@ start, what counts as evidence, and the rule that every finding must cite someth
 re-open — `file:line`, a command with its output, a commit SHA, a URL. **"It seems like" is not a
 finding.**
 
-## Phase 3 — Gate
+## Phase 3 — Briefing (not a gate)
 
 Show in chat: the question or task in one paragraph, the sub-plan/angle list, **the verification
-table** (independence or coverage), prerequisites, and the projected agent total with its arithmetic
-(`5 angles + ~8 findings × 2 refuters + 1 critic ≈ 22`). Never paste full sub-plan bodies — they are
-on disk.
+table** (independence or coverage), prerequisites, any assumption you made about scope, and the
+projected agent total with its arithmetic (`5 angles + ~8 findings × 2 refuters + 1 critic ≈ 22`).
+Never paste full sub-plan bodies — they are on disk.
 
-Then ask for confirmation. `--yes` skips the ask. Run any sequential prerequisites yourself, in the
-main session, before launching.
+Then run any sequential prerequisites yourself, in the main session, and **launch Phase 4 in the same
+turn**. Do not end the turn on a question. No "¿arranco?", no "¿querés que lo lance?", no "avisame y
+sigo" — invoking the skill was the answer to all of them. The briefing is a heads-up the user reads
+while the fleet is already running; they can interrupt, and an interrupt is cheap.
+
+The three exceptions, and they are the only three:
+- `--plan-only` — stop after Phase 2, the plan is the deliverable.
+- `--ask` — the user explicitly wants the old confirmation step.
+- A **destructive or outward-facing prerequisite**: creating worktrees (`--isolated`), or anything
+  that pushes, comments, merges or writes outside the repo. Confirm that one action, then continue —
+  it is not a licence to re-ask about the fleet itself.
 
 ## Phase 4 — Execution (the `Workflow` call)
 
