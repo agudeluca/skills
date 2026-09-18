@@ -1,9 +1,10 @@
 ---
 name: easy-approve
 description: >
-  Triage a repository's open pull requests and separate the ones that are safe to approve now
-  from the ones that need a real review, reproducing each candidate's bug and its fix — with unit
-  tests when the PR ships them, and on a booted iOS simulator when the change is visible.
+  Walk every open pull request on a repository's board and give each one a status with its
+  evidence, separating the ones safe to approve now from the ones that need a real review.
+  Reproduces each candidate's bug and its fix — with unit tests when the PR ships them, a local
+  run wherever one is possible, and a booted iOS simulator when the change is visible.
   Reports; never approves, comments or merges. Use when the user says things like "revisá el board",
   "easy approve", "which PRs can I approve", "triage the open PRs", or "/easy-approve".
 argument-hint: '[pr numbers…] [--no-sim] [--repo owner/name]'
@@ -14,6 +15,11 @@ argument-hint: '[pr numbers…] [--no-sim] [--repo owner/name]'
 Walks the open-PR board and answers one question per PR: **can this be approved right now, and what
 is the evidence?** A PR earns "easy approve" only when its claimed bug was reproduced and its fix was
 watched to fix it — not when CI is green and the diff reads fine.
+
+**Every open PR gets its own line in the report.** Not a bucket summarised in aggregate, not "the
+other 29 need a real read" — each one, with the specific reason it landed where it did. A bucket is
+the skill's guess at how much work a PR needs; it is never a substitute for saying something about
+that PR. The report reconciles against the board count, so nothing can quietly go missing.
 
 **Hard rule: this skill never approves, never comments on a PR, never merges, never pushes.** It
 produces a list and stops. Approving is the user's call and lands under their name; if they say
@@ -28,8 +34,23 @@ produces a list and stops. Approving is the user's call and lands under their na
 3. `git fetch origin <base>` — a stale local `develop` will silently invalidate every comparison. (A
    backport of a fix that "isn't on develop" is usually just a develop that is a few hours old.)
 4. If the simulator will be used: confirm a booted device (`xcrun simctl list devices | grep Booted`)
-   and that **Metro is running from this repo** (`lsof -i :8081`). Fast refresh follows the git tree,
-   which is the whole trick in Phase 2. Without either, run with `--no-sim` and say so in the report.
+   and that **Metro is serving this checkout** — not just that something holds port 8081:
+
+   ```bash
+   for PID in $(lsof -ti :8081); do
+     echo "$PID -> $(lsof -a -p "$PID" -d cwd -Fn | sed -n 's/^n//p')"
+   done
+   ```
+
+   Loop over the PIDs — port 8081 routinely has more than one (Metro plus a
+   helper whose cwd is `/`), so a bare `lsof -p "$(lsof -ti :8081)"` is handed two
+   PIDs at once and silently reports nothing useful.
+
+   A Metro started from a **worktree** answers on the same port and looks identical, but fast
+   refresh then follows *that* tree, so every file you apply in the main checkout is invisible to
+   the running app and the before/after shots are of the wrong code. If the cwd is not this repo,
+   either run with `--no-sim` and say so in the report, or ask the user before restarting Metro —
+   a worktree with unpushed commits is somebody's live session, and that is their call, not yours.
 
 ## Phase 1 — Triage
 
@@ -37,20 +58,55 @@ produces a list and stops. Approving is the user's call and lands under their na
 python3 <skill-dir>/scripts/triage.py --me <github-user> --json board.json
 ```
 
-It prints a table and buckets every open PR:
+It prints a table and buckets every open PR, then a count line the report must reconcile against:
 
 | bucket | meaning | what Phase 2 does with it |
 | --- | --- | --- |
+| `blocked` | reading the diff cannot change what happens next | name the state, do not review the code |
 | `validatable` | app code, no native/deps, ≤150 lines changed | reproduce bug + fix |
 | `zero-risk` | only `e2e/`, `scripts/`, docs — or a ≤2-file bot backport | read the diff, verify the claim, no reproduction |
-| `needs-real-review` | big, native, or dependency-touching | list it, do not pretend to have validated it |
+| `needs-real-review` | big, native, or dependency-touching | read it enough to say *why*, per PR |
+
+**The state gate runs first, and it is the highest-yield step in the skill.** On a real board a
+large share of what looks like a review backlog is nothing of the kind: a PR carrying an `On Hold`
+label, one that conflicts with its base, one whose author owes an answer to a rejection, one already
+approved by you, one whose diff is empty because it already merged. Every minute spent reading those
+diffs is a minute not spent on a PR that could actually be approved. `blocked_reason()` retires them
+before size or paths are consulted at all.
+
+`mergeable: UNKNOWN` is the trap inside that gate. It does not mean "merges fine" — it means GitHub
+has not computed it yet, and the act of asking starts the computation. The script therefore asks a
+second time for exactly those PRs; treating the first answer as final hides PRs that cannot merge at
+all behind a bucket that says "go read this".
 
 Read the flags it prints. `stacked on <branch>` means the PR's base is another PR — those merge in
 stack order and are usually best validated once, at the tip. `drift` is `-behind/+ahead` against the
 base branch; a branch tens of commits behind is the single most common reason a PR looks broken
-locally when it is fine.
+locally when it is fine. `updated` is the last activity date: a PR untouched for weeks is a fact
+about the PR, and is usually how an empty or abandoned one gives itself away.
 
 ## Phase 2 — Validation
+
+### How deep to go, per PR
+
+Every PR gets **at least tier 1**. The tiers bound the cost of "one by one" — they are not
+permission to skip anyone.
+
+| tier | who gets it | what it costs |
+| --- | --- | --- |
+| 0 | `blocked` | seconds — name the state, move on |
+| 1 | **everyone else, without exception** | read the PR body and `--stat`; for anything you can hold in your head, read the diff. The deliverable is one specific sentence about *this* PR |
+| 2 | `validatable`, `zero-risk`, and any `needs-real-review` that turns out to be tractable | the apply-onto-base recipe, plus a local run: the test reproduction, the module suite, a type-check |
+| 3 | tier 2 PRs whose change is visible | the simulator |
+
+A tier-1 line has to be about the PR in front of you. "Too big to review" is not a finding —
+*"+9370 across 112 files bumping the Stream SDKs; needs calls QA on both platforms"* is. If a PR is
+genuinely unreadable at tier 1, the line says what it would take to review it and who should.
+
+**Promote freely.** The bucket is a heuristic over size and paths, and it is wrong in the useful
+direction often enough to check: a `deps` PR is bucketed `needs-real-review` for touching
+`yarn.lock`, and can still be fully validated in ten minutes (see below). When a tier-1 read shows a
+PR is tractable, validate it and say so.
 
 ### The core recipe: apply onto base, don't check out the branch
 
@@ -121,6 +177,33 @@ Notes that cost time when forgotten:
   nodes and nested text often isn't tappable by its label.
 - Screenshots go to the session scratchpad, never into the repo.
 
+### If the PR bumps a dependency — read the changelog, don't shrug
+
+A version bump is bucketed `needs-real-review` because it touches `yarn.lock`, but it is one of the
+most validatable things on the board, and CI is close to worthless on it: Jest runs under Node, so a
+green suite says nothing about how the package behaves inside Metro's bundle on a device.
+
+```bash
+npm view <pkg>@<new> peerDependencies dependencies      # a peer bump is a hard break
+cd <scratchpad> && npm pack <pkg>@<new> --silent && tar xzf <pkg>-<new>.tgz
+curl -sL https://cdn.jsdelivr.net/npm/<pkg>@<new>/CHANGELOG.md   # entries BETWEEN old and new
+```
+
+Then, for each breaking change the changelog lists, answer one question: **does this app's usage hit
+it?** Find the call site and check. That turns "major bump, scary" into a specific yes or no.
+
+Two traps worth naming, because both pass CI:
+
+- **Top-level await.** A package that adds TLA breaks the Metro bundle while working fine in Jest.
+  Grep the published build (`grep -nE '^\s*await |^\s*(const|let|var)\s+\w+\s*=\s*await ' package/esm/*.js`)
+  rather than trusting a changelog line, which may describe a version since fixed.
+- **React Native already has the globals.** A new `cross-fetch`-style dependency is often reached
+  only when `global.fetch` / `global.XMLHttpRequest` are missing — which on RN they are not. Read
+  the resolution logic before counting it as new surface.
+
+Also say whether the bump is *worth taking*: a release that closes a GHSA advisory is a reason to
+prioritise it, and belongs in the report next to the risk.
+
 ### Cheap cross-checks worth doing on every candidate
 
 - Do the symbols and i18n keys the PR introduces already exist on the base? (A `weight="semiBold"`
@@ -128,6 +211,22 @@ Notes that cost time when forgotten:
 - Does a bot backport match what actually merged? Diff the touched lines against the base.
 - For an `e2e/`-only PR: if it adds a nested flow that is *not* invoked from an already-registered
   root flow, it needs its own entry in `e2e/config.yml`.
+- **Did a repo rule land after the PR did?** Compare the PR's `updated` date against the base's
+  `CLAUDE.md`:
+
+  ```bash
+  git log --format='%h %ad %s' --date=short -S '<rule phrase>' -- CLAUDE.md
+  ```
+
+  A requirement added last week is still binding on a PR opened the week before, but it is policy
+  drift rather than author error — say which, so the note reads as "this is now owed" and not "you
+  got this wrong".
+- **Does the PR delete something that was added deliberately?** Run `git log -S` on the removed
+  lines. A guard introduced by a security or incident fix a few weeks ago is not dead code, and
+  removing it needs that owner's sign-off however sound the diff looks.
+- **Is this PR part of a cluster?** When several open PRs touch the same subsystem — a startup path,
+  one module's store — reviewing them one at a time understates the combined risk. Say they should
+  be read as a set, and name them.
 
 ### What you cannot validate
 
@@ -137,13 +236,27 @@ unvalidated PR listed as validated is worse than one listed as untested.
 
 ## Phase 3 — Report
 
-Three sections, in this order, each PR carrying its evidence in one or two lines:
+Four sections, in this order, each PR carrying its evidence in one or two lines:
 
 1. **Easy approve** — bug reproduced, fix verified. Say exactly how (which test flipped, what the
    before/after showed, which suites and counts ran).
 2. **Approve with a note** — works, but with a caveat the reviewer should carry: only one of several
-   surfaces exercised, branch far behind base, a design question the PR itself raised.
-3. **Not easy** — needs QA, design sign-off, another platform, or simply a real read. One line on why.
+   surfaces exercised, branch far behind base, a design question the PR itself raised, a merge-order
+   dependency on another repo.
+3. **Blocked on state** — parked, conflicting, rejected, already approved, empty. A table is the
+   right shape here: number, reason, and whose move it is. These need an author, a rebase or a
+   label — never a reviewer.
+4. **Needs a real read** — one line *per PR*, naming what specifically makes it hard and what it
+   would take: which platform's QA, whose design sign-off, which data the test instance lacks.
+
+**Reconcile the count.** End with the arithmetic against the board total the script printed —
+`39 open: 1 easy · 5 with a note · 16 blocked · 17 need a read`. If the sections do not add up, a PR
+was dropped, and dropping one silently is the failure this skill exists to avoid. A reader must be
+able to look up any open PR number and find what you said about it.
+
+**Report the gaps as gaps.** A PR validated only on source, with no local run or simulator pass, is
+not "verified" — say which evidence you have and which you do not. An unvalidated PR listed as
+validated is worse than one listed as untested.
 
 Close by offering to approve them, and wait. Do not approve as part of this skill.
 

@@ -4,7 +4,7 @@ Personal Claude Code skills.
 
 | skill | what it does |
 | --- | --- |
-| [`easy-approve`](easy-approve/) | Triages a repo's open PRs into *easy approve* / *approve with a note* / *needs a real review*, reproducing each candidate's bug and fix — unit tests when the PR ships them, iOS simulator when the change is visible. Reports only; never approves. |
+| [`easy-approve`](easy-approve/) | Walks a repo's **whole** open-PR board and gives every PR a status with its evidence. Retires the parked / conflicting / already-approved ones on state before reading any code, then reproduces each remaining candidate's bug and fix — unit tests when the PR ships them, `npm pack` + changelog for dependency bumps, iOS simulator when the change is visible. Reconciles its sections against the board count, so no PR goes unmentioned. Reports only; never approves. |
 | [`clean-worktrees`](clean-worktrees/) | Finds every git worktree in every repo under `~/projects`, classifies each as clean / unpushed / dirty / locked / gone, and removes only the ones whose contents exist somewhere else — after confirmation. Never force-removes, never deletes unmerged branches. |
 | [`parallel`](parallel/) | Max mode, two flavours. **build**: decomposes a task into sub-plans that provably cannot collide, implements each in its own agent, and has a *different* agent re-run the acceptance criteria. **research**: sweeps a question from independent angles, then makes 2 agents per finding try to refute it — unanimous survival or it is cut — and a critic name what the sweep missed. Prints the projected agent count before launching. Never commits; research never writes at all. |
 
