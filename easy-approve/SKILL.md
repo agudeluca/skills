@@ -37,8 +37,14 @@ produces a list and stops. Approving is the user's call and lands under their na
    and that **Metro is serving this checkout** — not just that something holds port 8081:
 
    ```bash
-   PID=$(lsof -ti :8081) && lsof -p "$PID" | awk '$4=="cwd" {print $NF}'
+   for PID in $(lsof -ti :8081); do
+     echo "$PID -> $(lsof -a -p "$PID" -d cwd -Fn | sed -n 's/^n//p')"
+   done
    ```
+
+   Loop over the PIDs — port 8081 routinely has more than one (Metro plus a
+   helper whose cwd is `/`), so a bare `lsof -p "$(lsof -ti :8081)"` is handed two
+   PIDs at once and silently reports nothing useful.
 
    A Metro started from a **worktree** answers on the same port and looks identical, but fast
    refresh then follows *that* tree, so every file you apply in the main checkout is invisible to
