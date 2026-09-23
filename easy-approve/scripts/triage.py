@@ -172,8 +172,14 @@ def blocked_reason(pr: dict, me: str) -> str:
         if me and r["author"] and r["author"]["login"] == me
         and r["state"] in ("APPROVED", "CHANGES_REQUESTED")
     ]
+    commits = pr["commits"]["nodes"]
+    pushed = commits[0]["commit"]["committedDate"] if commits else ""
     if my_reviews and my_reviews[-1]["state"] == "APPROVED":
-        return "already approved by you"
+        # An approval given before the latest push was given to a different diff.
+        # GitHub keeps it, but the PR is back on the table for this pass.
+        approved_at = my_reviews[-1]["submittedAt"] or ""
+        if not (pushed and approved_at and pushed > approved_at):
+            return "already approved by you"
 
     if pr["reviewDecision"] == "CHANGES_REQUESTED":
         # A push after the rejection may have answered it — the agent still has
@@ -182,8 +188,6 @@ def blocked_reason(pr: dict, me: str) -> str:
             r["submittedAt"] for r in pr["reviews"]["nodes"]
             if r["state"] == "CHANGES_REQUESTED" and r["submittedAt"]
         ]
-        commits = pr["commits"]["nodes"]
-        pushed = commits[0]["commit"]["committedDate"] if commits else ""
         if requested and pushed and pushed > max(requested):
             return "changes requested — pushed since, check if addressed"
         return "changes requested — the author owns it"
