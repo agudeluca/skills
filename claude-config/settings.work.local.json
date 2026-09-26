@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker system df *)",
+      "Bash(docker volume ls *)",
+      "Bash(docker container *)",
+      "Bash(docker image *)",
+      "Bash(docker builder *)",
+      "Bash(docker volume *)",
+      "Bash(awk 'NR==1 || NR==2 {print $0}')",
+      "Bash(awk 'NR==1 || NR==2')"
+    ]
+  }
+}
