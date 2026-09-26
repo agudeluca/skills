@@ -18,14 +18,24 @@ Two config dirs are in play — the shell aliases pick which one Claude reads:
 | `claudepr` | `~/.claude-personal` |
 
 A skill only exists for the alias whose `skills/` directory contains it, so install into **both**.
-Symlink instead of copying, so edits here are live:
+`install.sh` symlinks every skill here (and `claude-config/CLAUDE.md`) into both config dirs, so edits
+here are live, and seeds `settings.json` from `claude-config/` where none exists yet:
 
 ```bash
-for cfg in ~/.claude ~/.claude-personal; do
-  for skill in easy-approve clean-worktrees parallel; do
-    ln -sfn ~/projects/skills/"$skill" "$cfg"/skills/"$skill"
-  done
-done
+./install.sh
 ```
 
 Skills are read at startup — a new symlink shows up in the next session, not the running one.
+
+## Also here
+
+| path | what it is |
+| --- | --- |
+| [`active`](active/) | Keeps the user shown as online by jiggling the mouse 1px via `cliclick`. |
+| [`engage`](engage/) | Retries commands that failed on the network (never real failures, never money-moving calls) and watches the connection. |
+| [`brainstorming`](brainstorming/) | Local fork of [obra/superpowers](https://github.com/obra/superpowers)' brainstorming skill (MIT). |
+| [`claude-config/CLAUDE.md`](claude-config/CLAUDE.md) | Global rules shared by both aliases ("fixeame el git", worktree policy, "clean metros"). |
+| `claude-config/settings.*.json` | `settings.json` for each alias, as a starting point on a new machine. |
+
+Installed from elsewhere, not copied here: `parallel-plan` ([agudeluca/parallel-plan-skill](https://github.com/agudeluca/parallel-plan-skill)),
+and skills.sh packages listed at the end of `install.sh`.

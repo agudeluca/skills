@@ -1,0 +1,4 @@
+__pycache__/
+.jiggle.log
+.jiggle.pid
+.DS_Store
