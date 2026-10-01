@@ -1,18 +1,18 @@
 ---
-name: cedear-screener
+name: stock-review
 description: >
   Screen the stocks that have a CEDEAR in BYMA for the cheapest and most beaten-down — lowest P/E
   combined with the deepest drop from their highs — plus a table of the top cryptos ranked by drop
   from all-time high. Live data from Yahoo Finance. Use when the user says things like "cedears
   baratos", "top cedears por P/E", "menor price to earning y mayor caída desde máximos", "qué
   cedears están más castigados", "screener de cedears", "cryptos más caídas desde el ATH", or
-  "/cedear-screener".
+  "/stock-review".
 argument-hint: '[--top N] [--sort score|ath|52w|pe] [--max-pe X] [--only stocks|crypto]'
 ---
 
 ## What this does
 
-Runs `scripts/run.sh`, which on first use creates a private venv at `~/.cache/cedear-screener/venv`
+Runs `scripts/run.sh`, which on first use creates a private venv at `~/.cache/stock-review/venv`
 (yfinance + pandas) and then downloads, for ~300 stocks with a CEDEAR and ~36 cryptos:
 
 - **Stocks:** trailing P/E, forward P/E, full price history → drop from all-time high and from the
@@ -23,13 +23,13 @@ Runs `scripts/run.sh`, which on first use creates a private venv at `~/.cache/ce
 The default stock order (`score`) is the average of two percentile ranks: P/E (lower is better) and
 drop from all-time high (deeper is better). Both weigh the same.
 
-It is read-only and touches nothing outside `~/.cache/cedear-screener/`. Takes about 1–2 minutes
+It is read-only and touches nothing outside `~/.cache/stock-review/`. Takes about 1–2 minutes
 (one Yahoo call per stock). Respond in the language the user is using.
 
 ## Run it
 
 ```bash
-~/.claude-personal/skills/cedear-screener/scripts/run.sh [flags] 2>/dev/null
+~/.claude-personal/skills/stock-review/scripts/run.sh [flags] 2>/dev/null
 ```
 
 Use whichever config dir has the skill (`~/.claude` or `~/.claude-personal`). It needs network: in a

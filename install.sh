@@ -5,7 +5,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-SKILLS=(brainstorming cedear-screener clean-worktrees easy-approve engage parallel)
+SKILLS=(brainstorming clean-worktrees easy-approve engage parallel stock-review)
 
 for cfg in "$HOME/.claude" "$HOME/.claude-personal"; do
   mkdir -p "$cfg/skills"
