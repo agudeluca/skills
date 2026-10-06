@@ -19,7 +19,9 @@ Measured on 2026-10-06 while writing this spec:
 - 4 node dev servers listening: `5174`, `5175`, `5185`, `5186`. The `expenses` session had been
   holding `5185`/`5186` for 13 hours with `vite --port 5186 --strictPort` — a strict port does not
   degrade when taken, it fails the boot.
-- No hooks configured in either config dir; `~/.claude-shared` did not exist.
+- No hooks configured in either config dir; `~/.claude-shared` did not exist. (By the time the
+  hooks were implemented `~/.claude-personal/settings.json` had gained a `PreToolUse` hook of its
+  own, which is why the installer merges rather than writes.)
 
 The collisions are over ports, the iOS simulator, Metro bundler instances, and local test
 databases. Nothing on the machine tracks who holds what.
@@ -107,6 +109,19 @@ Claude. The script walks the parent chain upward until it finds a process whose 
 and records that PID. If the walk reaches PID 1 without a match, it writes no PID and the record is
 governed by the TTL alone.
 
+### Faking a session's process, for tests
+
+`ps -o comm=` on macOS reports the *executable path*: not `argv[0]` (so `exec -a claude` does not
+help), and not the script name (so a shebang file named `claude` reports its interpreter). The
+kernel also SIGKILLs copies of platform binaries, so `cp /bin/sh ./claude` dies on exec. A process
+genuinely named `claude` therefore cannot be created by a test.
+
+So the expected name comes from `CLAUDE_REGISTRY_PROC_NAME`, defaulting to `claude`. The suite sets
+it to `sh` and uses `/bin/sh -c '… & wait'` as a stand-in agent — a real process with real children
+that stays alive, which is what makes the ancestry cases testable. The ladder is name-agnostic, so
+this exercises it exactly. That the real binary does report `claude` was verified directly against
+a live session (pid 72680 → `/Users/agustindeluca/.local/bin/claude`).
+
 ### Liveness ladder
 
 Applied in order to each record on every read:
@@ -134,7 +149,9 @@ A dev server started through an agent's Bash tool is a descendant of that agent'
 So `ports` lists every listening socket from `lsof -iTCP -sTCP:LISTEN -P -n`, walks each PID's
 parent chain, and attributes the port to the first registered `claude` ancestor it finds. Ports with
 no registered ancestor are reported as unowned (ControlCenter on 5000, `adb` on 5037, a server the
-user started by hand).
+user started by hand). `ports` lists every socket, owned or not, since that is what a conflict hunt
+needs; `list` shows only the agent-owned ones and a count of the rest, because on this machine 34 of
+the 35 listening ports belong to nothing Claude started and drown the table.
 
 This needs no cooperation from any agent and cannot go stale.
 
@@ -148,7 +165,8 @@ This needs no cooperation from any agent and cannot go stale.
 | `touch` | `Stop` hook | refresh `updated_at` only |
 | `end` | `SessionEnd` hook | remove this session's record |
 | `digest` | hook / agent | 4–6 compact lines: live agents, taken ports, held leases |
-| `list` | `agents` CLI | full table for a human, including stale sessions and their reason |
+| `list` | `agents` CLI | full table for a human, including stale sessions and the ports agents own |
+| `intent <text>` | agent | set what this session is working on |
 | `claim <kind> <id> [note]` | agent | append a lease to this session's record |
 | `release <kind> <id>` | agent | remove a lease |
 | `ports` | agent / CLI | listening ports with their owning agent, derived |

@@ -5,6 +5,7 @@ Personal Claude Code skills.
 | skill | what it does |
 | --- | --- |
 | [`easy-approve`](easy-approve/) | Walks a repo's **whole** open-PR board and gives every PR a status with its evidence. Retires the parked / conflicting / already-approved ones on state before reading any code, then reproduces each remaining candidate's bug and fix — unit tests when the PR ships them, `npm pack` + changelog for dependency bumps, iOS simulator when the change is visible. Reconciles its sections against the board count, so no PR goes unmentioned. Leaves one before/after evidence comment on each PR it reproduced on the simulator (`scripts/post_evidence.sh`, edited in place on re-runs); never approves. |
+| [`agent-registry`](agent-registry/) | Shared status of every Claude session on this machine, so `clauder` and `claudepr` — separate installs that share no settings, memory or state — can see each other. One JSON record per session under `~/.claude-shared/agents/`, written by hooks and enriched by the agent with its intent and its leases on process-less resources (iOS simulator, test DB, worktree). Stores only what cannot be derived: liveness is `kill -0` on the session's PID, and port ownership comes from walking a listening socket's parent chain to its registered `claude` ancestor, so it cannot go stale. The 2h idle rule frees a *lease*, never the session. `agents` prints the whole picture; `agents ports` says who holds which port. |
 | [`clean-worktrees`](clean-worktrees/) | Finds every git worktree in every repo under `~/projects`, classifies each as clean / unpushed / dirty / locked / gone, and removes only the ones whose contents exist somewhere else — after confirmation. Never force-removes, never deletes unmerged branches. |
 | [`parallel`](parallel/) | Max mode, two flavours. **build**: decomposes a task into sub-plans that provably cannot collide, implements each in its own agent, and has a *different* agent re-run the acceptance criteria. **research**: sweeps a question from independent angles, then makes 2 agents per finding try to refute it — unanimous survival or it is cut — and a critic name what the sweep missed. Prints the projected agent count before launching. Never commits; research never writes at all. |
 | [`stock-review`](stock-review/) | Screens ~300 stocks with a CEDEAR in BYMA for the cheapest and most beaten-down: lowest P/E combined with the deepest drop from the all-time high (or 52-week high, or P/E alone). Also ranks ~36 cryptos by drop from ATH, in their own table since they have no P/E. Live Yahoo Finance data through a self-bootstrapping venv; read-only. |
@@ -26,7 +27,13 @@ here are live, and seeds `settings.json` from `claude-config/` where none exists
 ./install.sh
 ```
 
-Skills are read at startup — a new symlink shows up in the next session, not the running one.
+It also wires up `agent-registry`: it merges that skill's three hooks (`SessionStart`, `Stop`,
+`SessionEnd`) into each live `settings.json` — adding each only when its exact command is absent, so
+re-running changes nothing and hooks from other sources are left alone, with a `.bak` beside each
+file — and symlinks `registry.sh` to `~/.local/bin/agents`.
+
+Skills are read at startup — a new symlink shows up in the next session, not the running one. The
+same goes for the hooks: sessions already open keep running without them.
 
 ## Also here
 
