@@ -15,6 +15,18 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/block-pr-attribution.sh",
+            "if": "Bash(gh *)"
+          }
+        ]
+      }
     ]
   },
   "enabledPlugins": {},
@@ -43,5 +55,9 @@
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
   "remoteControlAtStartup": true,
-  "agentPushNotifEnabled": true
+  "agentPushNotifEnabled": true,
+  "attribution": {
+    "pr": "",
+    "sessionUrl": false
+  }
 }

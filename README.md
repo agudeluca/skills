@@ -19,7 +19,7 @@ Two config dirs are in play — the shell aliases pick which one Claude reads:
 | `claudepr` | `~/.claude-personal` |
 
 A skill only exists for the alias whose `skills/` directory contains it, so install into **both**.
-`install.sh` symlinks every skill here (and `claude-config/CLAUDE.md`) into both config dirs, so edits
+`install.sh` symlinks every skill here (plus `claude-config/CLAUDE.md` and `claude-config/hooks/`) into both config dirs, so edits
 here are live, and seeds `settings.json` from `claude-config/` where none exists yet:
 
 ```bash
@@ -34,7 +34,8 @@ Skills are read at startup — a new symlink shows up in the next session, not t
 | --- | --- |
 | [`engage`](engage/) | Retries commands that failed on the network (never real failures, never money-moving calls) and watches the connection. |
 | [`brainstorming`](brainstorming/) | Local fork of [obra/superpowers](https://github.com/obra/superpowers)' brainstorming skill (MIT). |
-| [`claude-config/CLAUDE.md`](claude-config/CLAUDE.md) | Global rules shared by both aliases ("fixeame el git", worktree policy, "clean metros"). |
+| [`claude-config/CLAUDE.md`](claude-config/CLAUDE.md) | Global rules shared by both aliases ("fixeame el git", worktree policy, "clean metros", no Claude attribution in PRs). |
+| [`claude-config/hooks/block-pr-attribution.sh`](claude-config/hooks/block-pr-attribution.sh) | `PreToolUse` hook that blocks `gh pr create/edit/comment` and `gh api` calls whose body carries the "Generated with Claude Code" footer or a `claude.ai/code/session_` link. Backs up `attribution.pr: ""` in both settings files. |
 | `claude-config/settings.*.json` | `settings.json` for each alias, as a starting point on a new machine. |
 
 Installed from elsewhere, not copied here: `parallel-plan` ([agudeluca/parallel-plan-skill](https://github.com/agudeluca/parallel-plan-skill)),

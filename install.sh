@@ -1,6 +1,6 @@
 #!/bin/bash
 # Wire this repo into both Claude config dirs (clauder -> ~/.claude, claudepr -> ~/.claude-personal).
-# Skills and CLAUDE.md are symlinked so edits here are live; settings are copied only when missing,
+# Skills, hooks and CLAUDE.md are symlinked so edits here are live; settings are copied only when missing,
 # since Claude rewrites settings.json itself.
 set -euo pipefail
 
@@ -14,6 +14,10 @@ for cfg in "$HOME/.claude" "$HOME/.claude-personal"; do
     ln -sfn "$REPO/$skill" "$cfg/skills/$skill"
   done
   ln -sfn "$REPO/claude-config/CLAUDE.md" "$cfg/CLAUDE.md"
+  mkdir -p "$cfg/hooks"
+  for hook in "$REPO"/claude-config/hooks/*.sh; do
+    ln -sfn "$hook" "$cfg/hooks/$(basename "$hook")"
+  done
 done
 
 [ -e "$HOME/.claude/settings.json" ] || cp "$REPO/claude-config/settings.work.json" "$HOME/.claude/settings.json"
