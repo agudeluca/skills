@@ -24,5 +24,23 @@
   "autoCompactEnabled": true,
   "remoteControlAtStartup": true,
   "agentPushNotifEnabled": true,
-  "useAutoModeDuringPlan": true
+  "useAutoModeDuringPlan": true,
+  "attribution": {
+    "pr": "",
+    "sessionUrl": false
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude-personal/hooks/block-pr-attribution.sh",
+            "if": "Bash(gh *)"
+          }
+        ]
+      }
+    ]
+  }
 }

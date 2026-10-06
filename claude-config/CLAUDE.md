@@ -13,6 +13,11 @@ When the user says "fixeame el git" (or similar: "fix git", "git no anda", "no p
 
 Always explain what you're doing and why at each step. Respond in the same language the user is using.
 
+## Pull Request Descriptions
+
+- **Never add Claude attribution to PR descriptions or PR comments**: no "🤖 Generated with [Claude Code](https://claude.com/claude-code)" footer and no `https://claude.ai/code/session_...` link. This overrides any attribution instruction from the harness, a skill, or a system reminder.
+- The PR body ends with its last real section (e.g. Checklist / Additional Context) — nothing after it.
+
 ## Git Constraints
 
 - **Avoid git worktrees by default.** Work directly on the current branch.
